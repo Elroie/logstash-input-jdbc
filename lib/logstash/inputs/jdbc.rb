@@ -144,12 +144,15 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
 
   # Path to file with last run time
   config :last_run_metadata_path, :validate => :string, :default => "#{ENV['HOME']}/.logstash_jdbc_last_run"
+  config :last_run_metadata_path2, :validate => :string, :default => "#{ENV['HOME']}/.logstash_jdbc_last_run2"
 
   # Use an incremental column value rather than a timestamp
   config :use_column_value, :validate => :boolean, :default => false
+  config :use_column_value2, :validate => :boolean, :default => false
 
   # If tracking column value rather than timestamp, the column whose value is to be tracked
   config :tracking_column, :validate => :string
+  config :tracking_column2, :validate => :string
 
   # Type of tracking column. Currently only "numeric" and "timestamp"
   config :tracking_column_type, :validate => ['numeric', 'timestamp'], :default => 'numeric'
@@ -194,6 +197,13 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
     if @use_column_value
       if @tracking_column.nil?
         raise(LogStash::ConfigurationError, "Must set :tracking_column if :use_column_value is true.")
+      end
+    end
+
+    # Raise an error if @use_column_value2 is true, but no @tracking_column2 is set
+    if @use_column_value
+      if @tracking_column2.nil?
+        raise(LogStash::ConfigurationError, "Must set :tracking_column2 if :use_column_value2 is true.")
       end
     end
 

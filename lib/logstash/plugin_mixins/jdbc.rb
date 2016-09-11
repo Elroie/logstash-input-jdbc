@@ -190,6 +190,17 @@ module LogStash::PluginMixins::Jdbc
     else
       @sql_last_value = Time.at(0).utc
     end
+
+    if @use_column_value2
+      case @tracking_column_type
+        when "numeric"
+          @sql_last_value2 = 0
+        when "timestamp"
+          @sql_last_value2 = Time.at(0).utc
+      end
+    else
+      @sql_last_value2 = Time.at(0).utc
+    end
   end # def prepare_jdbc_connection
 
   public
@@ -204,6 +215,7 @@ module LogStash::PluginMixins::Jdbc
       parameters = symbolized_params(parameters)
       query = @database[statement, parameters]
       sql_last_value = @use_column_value ? @sql_last_value : Time.now.utc
+      sql_last_value2 = @use_column_value2 ? @sql_last_value2 : Time.now.utc
       @tracking_column_warning_sent = false
       @logger.debug? and @logger.debug("Executing JDBC query", :statement => statement, :parameters => parameters, :count => query.count)
 
@@ -211,8 +223,14 @@ module LogStash::PluginMixins::Jdbc
         query.each_page(@jdbc_page_size) do |paged_dataset|
           paged_dataset.each do |row|
             sql_last_value = get_column_value(row) if @use_column_value
+            sql_last_value2 = get_column_value(row) if @use_column_value2
+            
             if @tracking_column_type=="timestamp" and @use_column_value and sql_last_value.is_a?(DateTime)
               sql_last_value=Time.parse(sql_last_value.to_s) # Coerce the timestamp to a `Time`
+            end
+
+            if @tracking_column_type=="timestamp" and @use_column_value2 and sql_last_value2.is_a?(DateTime)
+              sql_last_value2 = Time.parse(sql_last_value2.to_s) # Coerce the timestamp to a `Time`
             end
             yield extract_values_from(row)
           end
@@ -220,9 +238,16 @@ module LogStash::PluginMixins::Jdbc
       else
         query.each do |row|
           sql_last_value = get_column_value(row) if @use_column_value
+          sql_last_value2 = get_column_value(row) if @use_column_value2
+
           if @tracking_column_type=="timestamp" and @use_column_value and sql_last_value.is_a?(DateTime)
             sql_last_value=Time.parse(sql_last_value.to_s) # Coerce the timestamp to a `Time`
           end
+
+          if @tracking_column_type=="timestamp" and @use_column_value2 and sql_last_value2.is_a?(DateTime)
+            sql_last_value2 = Time.parse(sql_last_value2.to_s) # Coerce the timestamp to a `Time`
+          end
+
           yield extract_values_from(row)
         end
       end
@@ -231,12 +256,28 @@ module LogStash::PluginMixins::Jdbc
       @logger.warn("Exception when executing JDBC query", :exception => e)
     else
       @sql_last_value = sql_last_value
+      @sql_last_value2 = sql_last_value2
     end
     return success
   end
 
   public
-  def get_column_value(row)
+  def get_tracking_column_value(row)
+    if !row.has_key?(@tracking_column.to_sym)
+      if !@tracking_column_warning_sent
+        @logger.warn("tracking_column not found in dataset.", :tracking_column => @tracking_column)
+        @tracking_column_warning_sent = true
+      end
+      # If we can't find the tracking column, return the current value in the ivar
+      @sql_last_value
+    else
+      # Otherwise send the updated tracking column
+      row[@tracking_column.to_sym]
+    end
+  end
+
+  public
+  def get_second_tracking_column_value(row)
     if !row.has_key?(@tracking_column.to_sym)
       if !@tracking_column_warning_sent
         @logger.warn("tracking_column not found in dataset.", :tracking_column => @tracking_column)
