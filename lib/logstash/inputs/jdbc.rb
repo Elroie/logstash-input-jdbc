@@ -156,6 +156,7 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
 
   # Type of tracking column. Currently only "numeric" and "timestamp"
   config :tracking_column_type, :validate => ['numeric', 'timestamp'], :default => 'numeric'
+  config :tracking_column_type2, :validate => ['numeric', 'timestamp'], :default => 'numeric'
 
   # Whether the previous run state should be preserved
   config :clean_run, :validate => :boolean, :default => false
@@ -201,7 +202,7 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
     end
 
     # Raise an error if @use_column_value2 is true, but no @tracking_column2 is set
-    if @use_column_value
+    if @use_column_value2
       if @tracking_column2.nil?
         raise(LogStash::ConfigurationError, "Must set :tracking_column2 if :use_column_value2 is true.")
       end
@@ -212,8 +213,12 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
     # load sql_last_value from file if exists
     if @clean_run && File.exist?(@last_run_metadata_path)
       File.delete(@last_run_metadata_path)
+    elsif @clean_run && File.exist?(@last_run_metadata_path2)
+      File.delete(@last_run_metadata_path2)
     elsif File.exist?(@last_run_metadata_path)
       @sql_last_value = YAML.load(File.read(@last_run_metadata_path))
+    elsif File.exist?(@last_run_metadata_path2)
+      @sql_last_value2 = YAML.load(File.read(@last_run_metadata_path2))
     end
 
     unless @statement.nil? ^ @statement_filepath.nil?
@@ -263,7 +268,13 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
   def execute_query(queue)
     # update default parameters
     @parameters['sql_last_value'] = @sql_last_value
+
+    if @use_column_value2
+      @parameters['sql_last_value2'] = @sql_last_value2
+    end
+    
     execute_statement(@statement, @parameters) do |row|
+
       if enable_encoding?
         ## do the necessary conversions to string elements
         row = Hash[row.map { |k, v| [k.to_s, convert(k, v)] }]
@@ -277,6 +288,9 @@ class LogStash::Inputs::Jdbc < LogStash::Inputs::Base
   def update_state_file
     if @record_last_run
       File.write(@last_run_metadata_path, YAML.dump(@sql_last_value))
+    end
+    if @record_last_run and @use_column_value2
+      File.write(@last_run_metadata_path2, YAML.dump(@sql_last_value2))
     end
   end
 
